@@ -1,0 +1,12 @@
+{
+  "list_files": ["list files", "show files", "display files"],
+  "current_dir": ["current directory", "where am i", "present directory"],
+  "disk_usage": ["disk usage", "storage info", "disk space"],
+  "memory_usage": ["memory usage", "ram usage", "free memory"],
+  "date_time": ["date", "time", "current time"],
+  "make_dir":["create folder test","make a directory","create new folder"],
+  "delete_file":["delete file a.txt","remove file","delete this file"],
+  "open_firefox":["open firefox","start browser","launch firfox"],
+  "calculator":["open calculator","start calculator"]
+  
+}
