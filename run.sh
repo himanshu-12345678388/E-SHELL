@@ -1,3 +1,2 @@
 cd "$(dirname "$0")"
-source venv/bin/activate
-python assistant.py
+venv/bin/python assistant.py

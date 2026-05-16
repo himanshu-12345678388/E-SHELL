@@ -4,9 +4,12 @@
   "disk_usage": ["disk usage", "storage info", "disk space"],
   "memory_usage": ["memory usage", "ram usage", "free memory"],
   "date_time": ["date", "time", "current time"],
-  "make_dir":["create folder test","make a directory","create new folder"],
-  "delete_file":["delete file a.txt","remove file","delete this file"],
   "open_firefox":["open firefox","start browser","launch firfox"],
-  "calculator":["open calculator","start calculator"]
+  "calculator":["open calculator","start calculator"],
+  "system_uptime": ["system uptime", "how long has the system been running", "uptime"],
+  "kernel_info": ["kernel info", "system kernel", "os details"],
+  "cpu_info": ["cpu info", "processor details", "show cpu"],
+  "current_user": ["current user", "who am i", "logged in user"],
+  "hostname": ["hostname", "computer name", "machine name"]
   
 }

@@ -1,3 +1,3 @@
 #!/bin/bash
-python3 assistant.py
-
+cd "$(dirname "$0")"
+venv/bin/python assistant.py

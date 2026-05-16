@@ -9,14 +9,6 @@ def handle_command(text):
     if intent == "list_files":
         os.system("ls")
 
-    elif intent == "make_dir":
-        name =input("folder name:")
-        os.system(f"mkdir {name}")
-
-    elif intent == "delete_file":
-        name=input("file name:")
-        os.system(f"rm {name}")
-
     elif intent == "open_firefox":
         os.system("firefox &")
 
@@ -35,6 +27,21 @@ def handle_command(text):
 
     elif intent == "date_time":
         print(datetime.datetime.now())
+
+    elif intent == "system_uptime":
+        os.system("uptime")
+
+    elif intent == "kernel_info":
+        os.system("uname -a")
+
+    elif intent == "cpu_info":
+        os.system("lscpu")
+
+    elif intent == "current_user":
+        os.system("whoami")
+
+    elif intent == "hostname":
+        os.system("hostname")
 
     else:
         print("❓ Command not recognized")
