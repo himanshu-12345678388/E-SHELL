@@ -12,7 +12,24 @@ from model import predict_intent
 # blocked by design because a beginner-friendly assistant should not be able to
 # delete data, change permissions, or damage the system by accident.
 BLOCKED_NAME_PARTS = ("/", "..", "~", "*", "?", "&", "|", ";", "$", "`", ">", "<")
+BLOCKED_COMMANDS = {
+    "rm",
+    "rmdir",
+    "mv",
+    "sudo",
+    "kill",
+    "shutdown",
+    "reboot",
+    "chmod",
+    "chown",
+    "dd",
+    "mkfs",
+}
 PROJECT_DIR = Path.cwd().resolve()
+WORKSPACE_DIR = PROJECT_DIR / "workspace"
+ALLOWED_EDITORS = {"nano", "vim"}
+RUN_TIMEOUT_SECONDS = 10
+APPROVED_RUN_FILES = set()
 
 
 def run_command(args):
@@ -31,6 +48,102 @@ def launch_background(args):
         print(f"⚠️ Command not available: {args[0]}")
 
 
+def validate_filename(name):
+    """Return True only for simple filenames allowed in the workspace."""
+    if not name:
+        print("Please provide a file name.")
+        return False
+
+    if any(part in name for part in BLOCKED_NAME_PARTS):
+        print(
+            "Blocked unsafe filename. Use a simple name without /, .., ~, *, ?, &, |, ;, $, `, >, or <."
+        )
+        return False
+
+    return True
+
+
+def get_safe_path(filename):
+    """Build a safe path inside workspace/ after validating the filename."""
+    if not validate_filename(filename):
+        return None
+
+    WORKSPACE_DIR.mkdir(exist_ok=True)
+    path = (WORKSPACE_DIR / filename).resolve()
+    if path.parent != WORKSPACE_DIR.resolve():
+        print("Blocked path outside the workspace folder.")
+        return None
+
+    return path
+
+
+def print_completed_process(result):
+    if result.stdout:
+        print(result.stdout, end="")
+    if result.stderr:
+        print("Errors:")
+        print(result.stderr, end="")
+
+
+def run_and_print(args, cwd=None):
+    try:
+        result = subprocess.run(
+            args,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=RUN_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except FileNotFoundError:
+        print(f"⚠️ Command not available: {args[0]}")
+        return None
+    except subprocess.TimeoutExpired:
+        print(f"Stopped after {RUN_TIMEOUT_SECONDS} seconds because the program took too long.")
+        return None
+
+    print_completed_process(result)
+    return result
+
+
+def compile_then_run(compile_args, run_args, cwd=None):
+    compile_result = run_and_print(compile_args, cwd=cwd)
+    if compile_result is None:
+        return
+    if compile_result.returncode != 0:
+        print("Compiler errors are shown above.")
+        return
+
+    run_and_print(run_args, cwd=cwd)
+
+
+def run_python_file(path):
+    run_and_print(["python3", str(path)])
+
+
+def run_c_file(path):
+    output_path = path.with_suffix("")
+    compile_then_run(["gcc", str(path), "-o", str(output_path)], [str(output_path)])
+
+
+def run_cpp_file(path):
+    output_path = path.with_suffix("")
+    compile_then_run(["g++", str(path), "-o", str(output_path)], [str(output_path)])
+
+
+def run_java_file(path):
+    class_name = path.stem
+    compile_then_run(["javac", str(path)], ["java", "-cp", str(WORKSPACE_DIR), class_name])
+
+
+def run_js_file(path):
+    run_and_print(["node", str(path)])
+
+
+def run_shell_file(path):
+    run_and_print(["bash", str(path)])
+
+
 def print_help():
     print(
         """
@@ -42,10 +155,14 @@ Available examples:
   package manager info    fastfetch info
   touch notes.txt         mkdir examples          cp notes.txt backup.txt
   create file notes.txt   create folder examples  copy notes.txt to backup.txt
+  edit hello.py           open hello.py in nano   open hello.py in vim
+  make hello.py executable
+  run hello.py
 
 File safety rules:
   - Only simple names in the current project directory are allowed.
   - Paths and shell symbols such as /, .., ~, *, ?, &, |, ;, $, `, >, < are blocked.
+  - Editing, chmod +x, and running are limited to files inside workspace/.
   - Destructive commands are intentionally not supported.
 """.strip()
     )
@@ -77,6 +194,93 @@ def parse_words(text):
     except ValueError:
         print("I could not read that input. Please check the quotes and try again.")
         return []
+
+
+def handle_edit(words):
+    command = words[0].lower()
+    if len(words) == 2 and command == "edit":
+        editor = "nano"
+        filename = words[1]
+    elif len(words) == 4 and command == "open" and words[2].lower() == "in":
+        filename = words[1]
+        editor = words[3].lower()
+    else:
+        print("Please use: edit filename, open filename in nano, or open filename in vim")
+        return
+
+    if editor not in ALLOWED_EDITORS:
+        print("Only nano and vim are allowed editors.")
+        return
+
+    path = get_safe_path(filename)
+    if not path:
+        return
+
+    try:
+        subprocess.run([editor, str(path)], check=False)
+    except FileNotFoundError:
+        print(f"⚠️ Editor not available: {editor}")
+
+
+def handle_make_executable(words):
+    if len(words) != 3 or words[0].lower() != "make" or words[2].lower() != "executable":
+        print("Please use: make filename executable")
+        return
+
+    path = get_safe_path(words[1])
+    if not path:
+        return
+    if not path.is_file():
+        print(f"File does not exist in workspace: {path.name}")
+        return
+
+    subprocess.run(["chmod", "+x", str(path)], check=False)
+    print(f"Made executable: {path.name}")
+
+
+def ask_before_first_run(path):
+    if path in APPROVED_RUN_FILES:
+        return True
+
+    answer = input(
+        f"Running code can be unsafe. Run workspace/{path.name}? Type yes to continue: "
+    )
+    if answer.strip().lower() != "yes":
+        print("Run cancelled.")
+        return False
+
+    APPROVED_RUN_FILES.add(path)
+    return True
+
+
+def handle_run_file(words):
+    if len(words) != 2:
+        print("Please provide one file name, for example: run hello.py")
+        return
+
+    path = get_safe_path(words[1])
+    if not path:
+        return
+    if not path.is_file():
+        print(f"File does not exist in workspace: {path.name}")
+        return
+    if not ask_before_first_run(path):
+        return
+
+    runners = {
+        ".py": run_python_file,
+        ".c": run_c_file,
+        ".cpp": run_cpp_file,
+        ".java": run_java_file,
+        ".js": run_js_file,
+        ".sh": run_shell_file,
+    }
+    runner = runners.get(path.suffix)
+    if not runner:
+        print("Unsupported file type. Supported: .py, .c, .cpp, .java, .js, .sh")
+        return
+
+    runner(path)
 
 
 def handle_touch(words):
@@ -196,6 +400,10 @@ def handle_command(text):
         return
 
     first_word = words[0].lower()
+    lowered_words = [word.lower() for word in words]
+    if first_word in BLOCKED_COMMANDS or lowered_words[:2] == ["chmod", "777"]:
+        print("Blocked dangerous command.")
+        return
     if first_word == "help":
         print_help()
         return
@@ -207,6 +415,17 @@ def handle_command(text):
         return
     if first_word == "cp":
         handle_copy(words)
+        return
+    if first_word == "edit" or (
+        first_word == "open" and len(words) == 4 and words[2].lower() == "in"
+    ):
+        handle_edit(words)
+        return
+    if first_word == "make":
+        handle_make_executable(words)
+        return
+    if first_word == "run":
+        handle_run_file(words)
         return
 
     # Friendly aliases keep file operations easier to discover while still

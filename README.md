@@ -45,6 +45,7 @@ commands.py runs the matching safe command
 | `assistant.py` | Starts the assistant, reads user input, and passes it to the command handler. |
 | `commands.py` | Contains the supported safe actions that can be executed. |
 | `intents.json` | Stores example phrases for each supported intent. |
+| `workspace/` | Safe folder for files that can be edited, made executable, or run. |
 | `train.py` | Trains the classifier from the phrases in `intents.json`. |
 | `model.py` | Loads the saved model and predicts the intent for new user input. |
 | `vectorizer.pkl` | Saved TF-IDF vectorizer created during training. |
@@ -82,18 +83,24 @@ The assistant supports informational commands plus three intentionally limited f
 | `touch filename` or `create file filename` | Creates one file in the current project directory. |
 | `mkdir foldername` or `create folder foldername` | Creates one folder in the current project directory. |
 | `cp source destination` or `copy source to destination` | Copies one existing file to another simple filename in the current project directory. |
+| `edit filename` | Opens `workspace/filename` in nano. |
+| `open filename in nano` | Opens `workspace/filename` in nano. |
+| `open filename in vim` | Opens `workspace/filename` in vim. |
+| `make filename executable` | Runs `chmod +x` for a validated file inside `workspace/`. |
+| `run filename` | Runs supported code files inside `workspace/` after asking for confirmation the first time. |
 | `open_firefox` | Opens Firefox. |
 | `calculator` | Opens the calculator application. |
 
 ## Safety: intentionally narrow file operations
 
-This project does **not** implement destructive or privileged commands such as:
+This project blocks destructive or privileged commands such as:
 
 ```text
 rm
 rmdir
 mv
 chmod
+chmod 777
 chown
 sudo
 shutdown
@@ -103,7 +110,7 @@ mkfs
 dd
 ```
 
-Those commands are blocked on purpose because they can delete data, alter permissions, stop the machine, or damage disks. The assistant is meant to be safe for learning, so it only supports read-only system information and three constrained file actions.
+Those commands are blocked on purpose because they can delete data, alter permissions, stop the machine, or damage disks. The only permission change supported is the narrow phrase `make filename executable`, which runs `chmod +x` on a validated file inside `workspace/`.
 
 For file actions, the assistant:
 
@@ -111,6 +118,21 @@ For file actions, the assistant:
 - rejects names containing `/`, `..`, `~`, `*`, `?`, `&`, `|`, `;`, `$`, `` ` ``, `>`, or `<`
 - asks for missing arguments instead of guessing
 - uses Python APIs or `subprocess.run([...])` argument lists rather than passing raw user input to `shell=True`
+- opens and runs files only inside `workspace/`
+- allows only `nano` and `vim` as editors
+- asks before running a file for the first time because code execution can be unsafe
+- runs code with a 10 second timeout and captures stdout and stderr
+
+Supported run types:
+
+| Extension | Command used safely |
+|---|---|
+| `.py` | `python3 filename` |
+| `.c` | `gcc filename -o filename_without_ext`, then the compiled program |
+| `.cpp` | `g++ filename -o filename_without_ext`, then the compiled program |
+| `.java` | `javac filename`, then `java ClassName` |
+| `.js` | `node filename` |
+| `.sh` | `bash filename` |
 
 Examples:
 
@@ -121,6 +143,11 @@ mkdir examples
 create folder examples
 cp notes.txt backup.txt
 copy notes.txt to backup.txt
+edit hello.py
+open hello.py in nano
+open hello.py in vim
+make script.sh executable
+run hello.py
 ```
 
 The project also includes a confidence threshold in `model.py`. If the model is not confident enough about a phrase, it returns `unknown` instead of forcing an unrelated command.
@@ -190,6 +217,11 @@ mkdir examples
 create folder examples
 cp notes.txt backup.txt
 copy notes.txt to backup.txt
+edit hello.py
+open hello.py in nano
+open hello.py in vim
+make script.sh executable
+run hello.py
 ```
 
 ## Proof that the model works
@@ -213,6 +245,12 @@ The assistant predicts `cpu_info` and prints detailed processor information:
 The assistant predicts `kernel_info` for a kernel query, and it also rejects unsupported text as `unknown` instead of running an unsafe or unrelated command:
 
 ![Kernel info and unknown handling](docs/screenshots/kernel-and-unknown.png)
+
+### Workspace editor and run safety
+
+The assistant shows the new help text, uses the safe workspace rules, asks before running code, and keeps unsupported command forms blocked:
+
+![Workspace editor and run safety](docs/screenshots/workspace-editor-run.png)
 
 ### Clean exit
 

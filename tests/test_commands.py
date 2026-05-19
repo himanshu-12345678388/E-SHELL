@@ -12,11 +12,17 @@ class FileOperationTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.project_dir = Path(self.temp_dir.name)
+        self.workspace_dir = self.project_dir / "workspace"
         self.project_dir_patch = patch.object(commands, "PROJECT_DIR", self.project_dir)
+        self.workspace_dir_patch = patch.object(commands, "WORKSPACE_DIR", self.workspace_dir)
         self.project_dir_patch.start()
+        self.workspace_dir_patch.start()
+        commands.APPROVED_RUN_FILES.clear()
 
     def tearDown(self):
+        self.workspace_dir_patch.stop()
         self.project_dir_patch.stop()
+        commands.APPROVED_RUN_FILES.clear()
         self.temp_dir.cleanup()
 
     def capture_output(self, text):
@@ -94,6 +100,94 @@ class FileOperationTests(unittest.TestCase):
         self.assertIn("Source file does not exist: missing.txt", output)
         self.assertFalse((self.project_dir / "backup.txt").exists())
 
+    def test_workspace_filename_validation_blocks_unsafe_paths(self):
+        for name in ("../escape.py", "folder/file.py", "~notes.py", "*.py", "a;b.py"):
+            with self.subTest(name=name):
+                output = self.capture_output(f'run "{name}"')
+                self.assertIn("Blocked unsafe filename", output)
+
+    @patch("commands.subprocess.run")
+    def test_edit_file_uses_only_allowed_editors_in_workspace(self, run):
+        output = self.capture_output("open notes.py in nano")
+
+        self.assertTrue(self.workspace_dir.is_dir())
+        run.assert_called_once_with(["nano", str(self.workspace_dir / "notes.py")], check=False)
+        self.assertEqual(output, "")
+
+    @patch("commands.subprocess.run")
+    def test_edit_file_blocks_other_editors(self, run):
+        output = self.capture_output("open notes.py in emacs")
+
+        run.assert_not_called()
+        self.assertIn("Only nano and vim are allowed editors.", output)
+
+    @patch("commands.subprocess.run")
+    def test_make_executable_uses_chmod_plus_x_only_in_workspace(self, run):
+        self.workspace_dir.mkdir()
+        script = self.workspace_dir / "script.sh"
+        script.write_text("echo hello")
+
+        output = self.capture_output("make script.sh executable")
+
+        run.assert_called_once_with(["chmod", "+x", str(script)], check=False)
+        self.assertIn("Made executable: script.sh", output)
+
+    @patch("commands.subprocess.run")
+    def test_run_python_file_asks_first_and_captures_output(self, run):
+        self.workspace_dir.mkdir()
+        script = self.workspace_dir / "hello.py"
+        script.write_text("print('hello')")
+        run.return_value = commands.subprocess.CompletedProcess(
+            ["python3", str(script)], 0, stdout="hello\n", stderr=""
+        )
+
+        with patch("builtins.input", return_value="yes"):
+            output = self.capture_output("run hello.py")
+
+        run.assert_called_once_with(
+            ["python3", str(script)],
+            cwd=None,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        self.assertIn("hello", output)
+
+    @patch("commands.subprocess.run")
+    def test_run_c_file_prints_compiler_errors(self, run):
+        self.workspace_dir.mkdir()
+        source = self.workspace_dir / "bad.c"
+        source.write_text("bad code")
+        run.return_value = commands.subprocess.CompletedProcess(
+            ["gcc", str(source), "-o", str(source.with_suffix(""))],
+            1,
+            stdout="",
+            stderr="compile failed\n",
+        )
+
+        with patch("builtins.input", return_value="yes"):
+            output = self.capture_output("run bad.c")
+
+        self.assertIn("compile failed", output)
+        self.assertIn("Compiler errors are shown above.", output)
+        self.assertEqual(run.call_count, 1)
+
+    @patch("commands.subprocess.run")
+    def test_dangerous_commands_are_blocked(self, run):
+        for text in (
+            "rm file.txt",
+            "sudo apt update",
+            "chmod 777 file.txt",
+            "chmod 755 file.txt",
+            "chown me file.txt",
+        ):
+            with self.subTest(text=text):
+                output = self.capture_output(text)
+                self.assertIn("Blocked dangerous command.", output)
+
+        run.assert_not_called()
+
 
 class CommandRoutingTests(unittest.TestCase):
     @patch("commands.run_command")
@@ -103,6 +197,14 @@ class CommandRoutingTests(unittest.TestCase):
             commands.handle_command("python version")
 
         run_command.assert_called_once_with(["python3", "--version"])
+
+    @patch("commands.launch_background")
+    @patch("commands.predict_intent", return_value="open_firefox")
+    def test_open_firefox_still_uses_intent_routing(self, _predict_intent, launch_background):
+        with redirect_stdout(io.StringIO()):
+            commands.handle_command("open firefox")
+
+        launch_background.assert_called_once_with(["firefox"])
 
     @patch("commands.run_command")
     @patch("commands.shutil.which", return_value=None)

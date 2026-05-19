@@ -18,6 +18,11 @@ class IntentPredictionTests(unittest.TestCase):
             "python version": "python_version",
             "package manager info": "package_manager_info",
             "fastfetch info": "fastfetch_info",
+            "edit notes.py": "edit_file",
+            "open notes.py in nano": "edit_file",
+            "open notes.py in vim": "edit_file",
+            "make script.sh executable": "make_executable",
+            "run hello.py": "run_file",
         }
 
         for phrase, intent in expected.items():

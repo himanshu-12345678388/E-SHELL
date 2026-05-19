@@ -271,5 +271,41 @@
     "hardware summary",
     "quick system info",
     "neofetch style info"
+  ],
+  "edit_file": [
+    "edit filename",
+    "edit notes.py",
+    "open filename in nano",
+    "open notes.py in nano",
+    "open filename in vim",
+    "open notes.py in vim",
+    "edit code file",
+    "open code file in nano",
+    "open code file in vim",
+    "edit workspace file"
+  ],
+  "make_executable": [
+    "make filename executable",
+    "make script.sh executable",
+    "make file executable",
+    "give execute permission",
+    "add execute permission",
+    "chmod plus x file",
+    "make shell script executable",
+    "allow script to execute",
+    "set executable permission",
+    "make workspace file executable"
+  ],
+  "run_file": [
+    "run filename",
+    "run hello.py",
+    "run program.c",
+    "run program.cpp",
+    "run Main.java",
+    "run app.js",
+    "run script.sh",
+    "execute file",
+    "run workspace file",
+    "execute code file"
   ]
 }
